@@ -10,7 +10,9 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 @Service
@@ -38,7 +40,7 @@ public class AccountService {
     }
 
     @Transactional(isolation = Isolation.READ_UNCOMMITTED, propagation = Propagation.REQUIRES_NEW)
-    public void readUncommittedTransactionReadValue(String name, long expectedReadValue, CountDownLatch waitForTransactionUpdateValue, CountDownLatch waitForTransactionReadValue, BiConsumer<Long, Long> verifyReadValue) throws InterruptedException {
+    public void readUncommittedTransactionReadValue(String name, long expectedReadValue, CountDownLatch waitForTransactionUpdateValue, CountDownLatch waitForTransactionReadValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
         this.readValue(name, expectedReadValue, waitForTransactionUpdateValue, waitForTransactionReadValue,verifyReadValue);
     }
 
@@ -48,12 +50,12 @@ public class AccountService {
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRES_NEW)
-    public void readCommittedTransactionReadValue(String name, long expectedReadValue, CountDownLatch waitForTransactionUpdateValue, CountDownLatch waitForTransactionReadValue, BiConsumer<Long, Long> verifyReadValue) throws InterruptedException {
+    public void readCommittedTransactionReadValue(String name, long expectedReadValue, CountDownLatch waitForTransactionUpdateValue, CountDownLatch waitForTransactionReadValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
         this.readValue(name, expectedReadValue, waitForTransactionUpdateValue, waitForTransactionReadValue, verifyReadValue);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRES_NEW)
-    public void readCommittedTransactionReadValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Long, Long> verifyReadValue) throws InterruptedException {
+    public void readCommittedTransactionReadValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
         this.readValueTwice(name, expectedFirstReadValue, expectedSecondReadValue, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
     }
 
@@ -62,13 +64,33 @@ public class AccountService {
         this.updateValue(name, deposit, waitForTransactionReadValue);
     }
 
+    @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRES_NEW)
+    public void readCommittedTransactionListValue(int expectedFirstResultSize, int expectedSecondResultSize, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
+        this.listValueTwice(expectedFirstResultSize, expectedSecondResultSize, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
+    }
+
     @Transactional(isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
-    public void repeatableReadTransactionReadValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Long, Long> verifyReadValue) throws InterruptedException {
+    public void repeatableReadTransactionReadValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
         this.readValueTwice(name, expectedFirstReadValue, expectedSecondReadValue, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
     }
 
     @Transactional(isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public void repeatableReadTransactionUpdateValue(String name, long deposit, CountDownLatch waitForTransactionReadValue) throws InterruptedException {
+        this.updateValue(name, deposit, waitForTransactionReadValue);
+    }
+
+    @Transactional(isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
+    public void repeatableReadTransactionListValue(int expectedFirstResultSize, int expectedSecondResultSize, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
+        this.listValueTwice(expectedFirstResultSize, expectedSecondResultSize, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
+    }
+
+    @Transactional(isolation = Isolation.SERIALIZABLE, propagation = Propagation.REQUIRES_NEW)
+    public void serializableTransactionListValue(int expectedFirstResultSize, int expectedSecondResultSize, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
+        this.listValueTwice(expectedFirstResultSize, expectedSecondResultSize, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
+    }
+
+    @Transactional(isolation = Isolation.SERIALIZABLE, propagation = Propagation.REQUIRES_NEW)
+    public void serializableTransactionUpdateValue(String name, long deposit, CountDownLatch waitForTransactionReadValue) throws InterruptedException {
         this.updateValue(name, deposit, waitForTransactionReadValue);
     }
 
@@ -82,7 +104,7 @@ public class AccountService {
         throw new TransactionSystemException("transaction rollback");
     }
 
-    private void readValue(String name, long expectedReadValue, CountDownLatch waitForTransactionUpdateValue, CountDownLatch waitForTransactionReadValue, BiConsumer<Long, Long> verifyReadValue) throws InterruptedException {
+    private void readValue(String name, long expectedReadValue, CountDownLatch waitForTransactionUpdateValue, CountDownLatch waitForTransactionReadValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
         waitForTransactionUpdateValue.await();
         Account account = accountRepository.findByName(name);
         verifyReadValue.accept(expectedReadValue, account.getMoney());
@@ -90,7 +112,7 @@ public class AccountService {
         waitForTransactionReadValue.countDown();
     }
 
-    private void readValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Long, Long> verifyReadValue) throws InterruptedException {
+    private void readValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
         Account account = accountRepository.findByName(name);
         verifyReadValue.accept(expectedFirstReadValue, account.getMoney());
         log.info("readValueTwice: [{}] - before concurrent update - expected: {}, actual: {}", name, expectedFirstReadValue, account.getMoney());
@@ -103,10 +125,21 @@ public class AccountService {
     }
 
     private void updateValue(String name, long deposit, CountDownLatch waitForTransactionReadValue) throws InterruptedException {
-        waitForTransactionReadValue.await();
+        waitForTransactionReadValue.await(300, TimeUnit.MILLISECONDS);
         Account account = accountRepository.findByName(name);
         log.info("updateValue: [{}] - after concurrent read - initial money: {}, depositing: {}", name, account.getMoney(), deposit);
         accountRepository.deposit(name, deposit);
+    }
+
+    private void listValueTwice(int expectedFirstResultSize, int expectedSecondResultSize, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
+        List<Account> accounts = accountRepository.findAllByMoneyGreaterThan(0);
+        verifyReadValue.accept(expectedFirstResultSize, accounts.size());
+        log.info("listValueTwice: number of accounts which money are greater than 0 - before concurrent update - expected: {}, actual: {}", expectedFirstResultSize, accounts.size());
+        waitForTransactionReadValue.countDown();
+        waitForTransactionUpdateValue.await(300, TimeUnit.MILLISECONDS);
+        accounts = accountRepository.findAllByMoneyGreaterThan(0);
+        verifyReadValue.accept(expectedSecondResultSize, accounts.size());
+        log.info("listValueTwice: number of accounts which money are greater than 0 - after concurrent update - expected: {}, actual: {}", expectedSecondResultSize, accounts.size());
     }
 
 

@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface AccountRepository extends JpaRepository<Account, Long> {
 
@@ -14,4 +16,6 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     @Modifying
     @Query("update Account account set account.money = account.money + ?2 where account.name = ?1")
     void deposit(String name, long money);
+
+    List<Account> findAllByMoneyGreaterThan(long money);
 }

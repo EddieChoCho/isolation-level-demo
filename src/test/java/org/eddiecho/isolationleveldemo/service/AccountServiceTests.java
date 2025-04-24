@@ -51,7 +51,7 @@ class AccountServiceTests {
         accountRepository.deleteAll();
     }
 
-    private final BiConsumer<Long, Long> verifyReadValue = Assertions::assertEquals;
+    private final BiConsumer<Number, Number> verifyReadValue = Assertions::assertEquals;
 
     /**
      * Dirty Reads with READ_UNCOMMITTED:
@@ -175,6 +175,118 @@ class AccountServiceTests {
         executorService.execute(() -> {
             try {
                 accountService.repeatableReadTransactionReadValueTwice(account, 0, 0, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            waitForTwoTransactionsCommit.countDown();
+        });
+        executorService.execute(() -> {
+            try {
+                accountService.repeatableReadTransactionUpdateValue(account, 100, waitForTransactionReadValue);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            waitForTransactionUpdateValue.countDown();
+            waitForTwoTransactionsCommit.countDown();
+        });
+        waitForTwoTransactionsCommit.await();
+    }
+
+    /**
+     * Phantom Reads with READ_COMMITTED:
+     *   - First transaction select all the accounts which money > 0, the result count is 0.
+     *   - Then second transaction update the value of the accountE to 100.
+     *   - Then second transaction commit.
+     *   - When first transaction select all the accounts which money > 0 again, the result count is 1.
+     * Note:
+     *   - While the SQL standard permits phantom reads at READ_UNCOMMITTED, READ_COMMITTED, and REPEATABLE_READ levels.
+     *   - Modern databases like MySQL and PostgreSQL typically prevent phantom reads in REPEATABLE_READ due to implementation details.
+     *   - See: <a href="https://www.postgresql.org/docs/current/transaction-iso.html">PostgreSQL: Transaction Isolation</a>
+     *   - See: <a href="https://dev.mysql.com/doc/refman/8.4/en/innodb-transaction-isolation-levels.html">MySQL: Transaction Isolation Levels</a>
+     */
+    @Test
+    void testPhantomReadWithReadCommittedIsolation() throws InterruptedException {
+        CountDownLatch waitForTransactionReadValue = new CountDownLatch(1);
+        CountDownLatch waitForTransactionUpdateValue = new CountDownLatch(1);
+        CountDownLatch waitForTwoTransactionsCommit = new CountDownLatch(2);
+        String account = "accountE";
+        accountService.create(account);
+        final ExecutorService executorService = Executors.newFixedThreadPool(2);
+        executorService.execute(() -> {
+            try {
+                accountService.readCommittedTransactionListValue(0, 1, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            waitForTwoTransactionsCommit.countDown();
+        });
+        executorService.execute(() -> {
+            try {
+                accountService.readCommittedTransactionUpdateValue(account, 100, waitForTransactionReadValue);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            waitForTransactionUpdateValue.countDown();
+            waitForTwoTransactionsCommit.countDown();
+        });
+        waitForTwoTransactionsCommit.await();
+    }
+
+    /**
+     * Prevent Phantom Reads with SERIALIZABLE:
+     *   - First transaction select all the accounts which money > 0, the result count is 0.
+     *   - Then second transaction update the value of the accountF to 100.
+     *   - When first transaction select all the accounts which money > 0 again, the result count is still 0.
+     *   - Then first transaction commit.
+     *   - Then second transaction commit.
+     */
+    @Test
+    void testPreventPhantomReadWithSerializableIsolation() throws InterruptedException {
+        CountDownLatch waitForTransactionReadValue = new CountDownLatch(1);
+        CountDownLatch waitForTransactionUpdateValue = new CountDownLatch(1);
+        CountDownLatch waitForTwoTransactionsCommit = new CountDownLatch(2);
+        String account = "accountF";
+        accountService.create(account);
+        final ExecutorService executorService = Executors.newFixedThreadPool(2);
+        executorService.execute(() -> {
+            try {
+                accountService.serializableTransactionListValue(0, 0, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            waitForTwoTransactionsCommit.countDown();
+        });
+        executorService.execute(() -> {
+            try {
+                accountService.serializableTransactionUpdateValue(account, 100, waitForTransactionReadValue);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            waitForTransactionUpdateValue.countDown();
+            waitForTwoTransactionsCommit.countDown();
+        });
+        waitForTwoTransactionsCommit.await();
+    }
+
+    /**
+     * MySQL prevent Phantom Reads with REPEATABLE_READ using gap locking:
+     *   - First transaction select all the accounts which money > 0, the result count is 0.
+     *   - Then second transaction update the value of the accountF to 100.
+     *   - Then second transaction commit.
+     *   - When first transaction select all the accounts which money > 0 again, the result count is still 0.
+     * See: <a href="https://dev.mysql.com/doc/refman/8.4/en/innodb-next-key-locking.html">MySQL: Phantom Rows</a>
+     */
+    @Test
+    void testPreventPhantomReadWithRepeatableReadIsolation() throws InterruptedException {
+        CountDownLatch waitForTransactionReadValue = new CountDownLatch(1);
+        CountDownLatch waitForTransactionUpdateValue = new CountDownLatch(1);
+        CountDownLatch waitForTwoTransactionsCommit = new CountDownLatch(2);
+        String account = "accountF";
+        accountService.create(account);
+        final ExecutorService executorService = Executors.newFixedThreadPool(2);
+        executorService.execute(() -> {
+            try {
+                accountService.repeatableReadTransactionListValue(0, 0, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
