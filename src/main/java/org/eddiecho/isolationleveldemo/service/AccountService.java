@@ -74,7 +74,7 @@ public class AccountService {
 
     private void updateValueThenRollback(String name, long deposit, CountDownLatch waitForTransactionUpdateValue, CountDownLatch waitForTransactionReadValue) throws InterruptedException {
         Account account = accountRepository.findByName(name);
-        log.info("firstTransactionDeposit: money of the account: {}", account.getMoney());
+        log.info("updateValueThenRollback: [{}] - initial money: {}, depositing: {}", name, account.getMoney(), deposit);
         accountRepository.deposit(name, deposit);
         accountRepository.flush();
         waitForTransactionUpdateValue.countDown();
@@ -82,30 +82,30 @@ public class AccountService {
         throw new TransactionSystemException("transaction rollback");
     }
 
-    private void readValue(String name, long moneyShouldBeShown, CountDownLatch waitForTransactionUpdateValue, CountDownLatch waitForTransactionReadValue, BiConsumer<Long, Long> verifyReadValue) throws InterruptedException {
+    private void readValue(String name, long expectedReadValue, CountDownLatch waitForTransactionUpdateValue, CountDownLatch waitForTransactionReadValue, BiConsumer<Long, Long> verifyReadValue) throws InterruptedException {
         waitForTransactionUpdateValue.await();
         Account account = accountRepository.findByName(name);
-        verifyReadValue.accept(moneyShouldBeShown, account.getMoney());
-        log.info("secondTransactionDeposit: money of the account: {}", account.getMoney());
+        verifyReadValue.accept(expectedReadValue, account.getMoney());
+        log.info("readValue: [{}] - after flush from concurrent update - expected: {}, actual: {}", name, expectedReadValue, account.getMoney());
         waitForTransactionReadValue.countDown();
     }
 
     private void readValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Long, Long> verifyReadValue) throws InterruptedException {
         Account account = accountRepository.findByName(name);
         verifyReadValue.accept(expectedFirstReadValue, account.getMoney());
-        log.info("firstTransactionRead: money of the account: {}", account.getMoney());
+        log.info("readValueTwice: [{}] - before concurrent update - expected: {}, actual: {}", name, expectedFirstReadValue, account.getMoney());
         waitForTransactionReadValue.countDown();
         waitForTransactionUpdateValue.await();
         entityManager.clear();
         account = accountRepository.findByName(name);
         verifyReadValue.accept(expectedSecondReadValue, account.getMoney());
-        log.info("firstTransactionRead, read again: money of the account: {}", account.getMoney());
+        log.info("readValueTwice: [{}] - after commit from concurrent update - expected: {}, actual: {}", name, expectedSecondReadValue, account.getMoney());
     }
 
     private void updateValue(String name, long deposit, CountDownLatch waitForTransactionReadValue) throws InterruptedException {
         waitForTransactionReadValue.await();
         Account account = accountRepository.findByName(name);
-        log.info("secondTransactionUpdate: money of the account: {}", account.getMoney());
+        log.info("updateValue: [{}] - after concurrent read - initial money: {}, depositing: {}", name, account.getMoney(), deposit);
         accountRepository.deposit(name, deposit);
     }
 

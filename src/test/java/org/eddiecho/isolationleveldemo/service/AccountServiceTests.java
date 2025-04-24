@@ -1,6 +1,5 @@
 package org.eddiecho.isolationleveldemo.service;
 
-import lombok.extern.log4j.Log4j2;
 import org.eddiecho.isolationleveldemo.IsolationLevelDemoApplication;
 import org.eddiecho.isolationleveldemo.repository.AccountRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -22,13 +21,18 @@ import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@Log4j2
 @SpringBootTest(classes = IsolationLevelDemoApplication.class)
 @Testcontainers(disabledWithoutDocker = true)
 class AccountServiceTests {
 
+    /**
+     * MySQL Testcontainer with general query log enabled.
+     * Logs all incoming SQL queries for inspection.
+     * Reference: <a href="https://dev.mysql.com/doc/refman/8.4/en/query-log.html">MySQL General Query Log</a>
+     */
     @Container
-    private static final MySQLContainer<?> mysql = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"));
+    private static final MySQLContainer<?> mysql = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"))
+            .withCommand("--general-log", "--general-log-file=/var/lib/mysql/general.log");
 
     @Autowired
     private AccountService accountService;
@@ -50,14 +54,14 @@ class AccountServiceTests {
     private final BiConsumer<Long, Long> verifyReadValue = Assertions::assertEquals;
 
     /**
-     * Dirty Read with READ_UNCOMMITTED:
+     * Dirty Reads with READ_UNCOMMITTED:
      *   - First transaction modify the value of accountB to 100
      *   - Then second transaction read the value of accountB as 100.
      *   - Then first transaction rollback.
      *   - The value read by the second transaction is now invalid.
      * Note:
      *   - While the SQL standard permits dirty reads at this isolation level, PostgresSQL does not allow it due to its implementation details.
-     *   - <a href="https://www.postgresql.org/docs/current/transaction-iso.html">reference</a>
+     *   - See: <a href="https://www.postgresql.org/docs/current/transaction-iso.html">PostgreSQL: Transaction Isolation</a>
      */
     @Test
     void testDirtyReadWithReadUncommittedIsolation() throws InterruptedException {
@@ -85,7 +89,7 @@ class AccountServiceTests {
     }
 
     /**
-     * Prevent Dirty Read with READ_COMMITTED
+     * Prevent Dirty Reads with READ_COMMITTED
      *  - First transaction modify the value of accountB to 100
      *  - Then second transaction read the value of accountB as 0.
      *  - Then first transaction rollback
@@ -117,7 +121,7 @@ class AccountServiceTests {
     }
 
     /**
-     * Unrepeatable Read with READ_COMMITTED:
+     * Nonrepeatable Reads with READ_COMMITTED:
      *  - First transaction read the value of the accountC is 0.
      *  - Then second transaction update the value of the accountC to 100.
      *  - Then second transaction commit.
@@ -125,7 +129,7 @@ class AccountServiceTests {
      *  - The value is now 100, which is different from the initial read.
      */
     @Test
-    void testUnrepeatableReadWithReadCommittedIsolation() throws InterruptedException {
+    void testNonrepeatableReadWithReadCommittedIsolation() throws InterruptedException {
         CountDownLatch waitForTransactionReadValue = new CountDownLatch(1);
         CountDownLatch waitForTransactionUpdateValue = new CountDownLatch(1);
         CountDownLatch waitForTwoTransactionsCommit = new CountDownLatch(2);
@@ -153,15 +157,15 @@ class AccountServiceTests {
     }
 
     /**
-     * Prevent Unrepeatable Read with REPEATABLE_READ:
-     *  - First transaction read the value of the accountC is 0.
-     *   - Then second transaction update the value of the accountC to 100.
+     * Prevent Nonrepeatable Reads with REPEATABLE_READ:
+     *   - First transaction read the value of the accountD is 0.
+     *   - Then second transaction update the value of the accountD to 100.
      *   - Then second transaction commit.
-     *   - When first transaction read the value of the accountC again.
+     *   - When first transaction read the value of the accountD again.
      *   - The value will still be 0.
      */
     @Test
-    void testPreventUnrepeatableReadWithRepeatableReadIsolation() throws InterruptedException {
+    void testPreventNonrepeatableReadWithRepeatableReadIsolation() throws InterruptedException {
         CountDownLatch waitForTransactionReadValue = new CountDownLatch(1);
         CountDownLatch waitForTransactionUpdateValue = new CountDownLatch(1);
         CountDownLatch waitForTwoTransactionsCommit = new CountDownLatch(2);
