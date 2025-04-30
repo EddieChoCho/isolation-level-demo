@@ -118,6 +118,10 @@ public class AccountService {
         log.info("readValueTwice: [{}] - before concurrent update - expected: {}, actual: {}", name, expectedFirstReadValue, account.getMoney());
         waitForTransactionReadValue.countDown();
         waitForTransactionUpdateValue.await();
+        /*
+          The Hibernate first-level cache (persistence context) provides application-level repeatable reads.
+          To observe the actual effects of the database's transaction isolation level, we must clear the persistence context so that the entity is reloaded from the database.
+         */
         entityManager.clear();
         account = accountRepository.findByName(name);
         verifyReadValue.accept(expectedSecondReadValue, account.getMoney());
