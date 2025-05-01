@@ -56,7 +56,7 @@ public class AccountService {
 
     @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRES_NEW)
     public void readCommittedTransactionReadValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
-        this.readValueTwice(name, expectedFirstReadValue, expectedSecondReadValue, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
+        this.readValueTwiceWithEntityManagerClear(name, expectedFirstReadValue, expectedSecondReadValue, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRES_NEW)
@@ -69,9 +69,14 @@ public class AccountService {
         this.listValueTwice(expectedFirstResultSize, expectedSecondResultSize, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
     }
 
+    @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRES_NEW)
+    public void readCommitedTransactionUpdateAccountNames(CountDownLatch waitForRead, String oldAccount1Name, String oldAccount2Name, String newAccount1Name, String newAccount2Name) throws InterruptedException {
+        this.updateAccountNames(waitForRead, oldAccount1Name, oldAccount2Name, newAccount1Name, newAccount2Name);
+    }
+
     @Transactional(isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public void repeatableReadTransactionReadValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
-        this.readValueTwice(name, expectedFirstReadValue, expectedSecondReadValue, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
+        this.readValueTwiceWithEntityManagerClear(name, expectedFirstReadValue, expectedSecondReadValue, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
     }
 
     @Transactional(isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
@@ -84,6 +89,20 @@ public class AccountService {
         this.listValueTwice(expectedFirstResultSize, expectedSecondResultSize, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
     }
 
+    @Transactional(isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
+    public List<Account> repeatableReadTransactionReadValueThenListAllValues(CountDownLatch waitForRead, CountDownLatch waitForWrite, String accountName) throws InterruptedException {
+        assert accountRepository.findByName(accountName) != null;
+        waitForRead.countDown();
+        waitForWrite.await();
+        entityManager.clear();
+        return accountRepository.findAll();
+    }
+
+    @Transactional(isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
+    public void repeatableReadTransactionUpdateAccountNames(CountDownLatch waitForRead, String oldAccount1Name, String oldAccount2Name, String newAccount1Name, String newAccount2Name) throws InterruptedException {
+        this.updateAccountNames(waitForRead, oldAccount1Name, oldAccount2Name, newAccount1Name, newAccount2Name);
+    }
+
     @Transactional(isolation = Isolation.SERIALIZABLE, propagation = Propagation.REQUIRES_NEW)
     public void serializableTransactionListValue(int expectedFirstResultSize, int expectedSecondResultSize, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
         this.listValueTwice(expectedFirstResultSize, expectedSecondResultSize, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
@@ -92,6 +111,19 @@ public class AccountService {
     @Transactional(isolation = Isolation.SERIALIZABLE, propagation = Propagation.REQUIRES_NEW)
     public void serializableTransactionUpdateValue(String name, long deposit, CountDownLatch waitForTransactionReadValue) throws InterruptedException {
         this.updateValue(name, deposit, waitForTransactionReadValue);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRES_NEW)
+    public void applicationLevelRepeatableReadsReadValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
+        this.readValueTwice(name, expectedFirstReadValue, expectedSecondReadValue, waitForTransactionReadValue, waitForTransactionUpdateValue, verifyReadValue);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED, propagation = Propagation.REQUIRES_NEW)
+    public List<Account> applicationLevelRepeatableReadsReadValueThenListAllValues(CountDownLatch waitForRead, CountDownLatch waitForWrite, String accountName) throws InterruptedException {
+        assert accountRepository.findByName(accountName) != null;
+        waitForRead.countDown();
+        waitForWrite.await();
+        return accountRepository.findAll();
     }
 
     private void updateValueThenRollback(String name, long deposit, CountDownLatch waitForTransactionUpdateValue, CountDownLatch waitForTransactionReadValue) throws InterruptedException {
@@ -112,10 +144,10 @@ public class AccountService {
         waitForTransactionReadValue.countDown();
     }
 
-    private void readValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
+    private void readValueTwiceWithEntityManagerClear(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
         Account account = accountRepository.findByName(name);
         verifyReadValue.accept(expectedFirstReadValue, account.getMoney());
-        log.info("readValueTwice: [{}] - before concurrent update - expected: {}, actual: {}", name, expectedFirstReadValue, account.getMoney());
+        log.info("readValueTwiceWithEntityManagerClear: [{}] - before concurrent update - expected: {}, actual: {}", name, expectedFirstReadValue, account.getMoney());
         waitForTransactionReadValue.countDown();
         waitForTransactionUpdateValue.await();
         /*
@@ -123,6 +155,17 @@ public class AccountService {
           To observe the actual effects of the database's transaction isolation level, we must clear the persistence context so that the entity is reloaded from the database.
          */
         entityManager.clear();
+        account = accountRepository.findByName(name);
+        verifyReadValue.accept(expectedSecondReadValue, account.getMoney());
+        log.info("readValueTwiceWithEntityManagerClear: [{}] - after commit from concurrent update - expected: {}, actual: {}", name, expectedSecondReadValue, account.getMoney());
+    }
+
+    private void readValueTwice(String name, long expectedFirstReadValue, long expectedSecondReadValue, CountDownLatch waitForTransactionReadValue, CountDownLatch waitForTransactionUpdateValue, BiConsumer<Number, Number> verifyReadValue) throws InterruptedException {
+        Account account = accountRepository.findByName(name);
+        verifyReadValue.accept(expectedFirstReadValue, account.getMoney());
+        log.info("readValueTwice: [{}] - before concurrent update - expected: {}, actual: {}", name, expectedFirstReadValue, account.getMoney());
+        waitForTransactionReadValue.countDown();
+        waitForTransactionUpdateValue.await();
         account = accountRepository.findByName(name);
         verifyReadValue.accept(expectedSecondReadValue, account.getMoney());
         log.info("readValueTwice: [{}] - after commit from concurrent update - expected: {}, actual: {}", name, expectedSecondReadValue, account.getMoney());
@@ -146,6 +189,13 @@ public class AccountService {
         log.info("listValueTwice: number of accounts which money are greater than 0 - after concurrent update - expected: {}, actual: {}", expectedSecondResultSize, accounts.size());
     }
 
+    public void updateAccountNames(CountDownLatch waitForRead, String oldAccount1Name, String oldAccount2Name, String newAccount1Name, String newAccount2Name) throws InterruptedException {
+        waitForRead.await();
+        Account account1 = accountRepository.findByName(oldAccount1Name);
+        Account account2 = accountRepository.findByName(oldAccount2Name);
+        account1.setName(newAccount1Name);
+        account2.setName(newAccount2Name);
+    }
 
 
 }

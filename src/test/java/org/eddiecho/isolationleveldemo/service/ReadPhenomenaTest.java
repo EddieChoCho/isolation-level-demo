@@ -3,55 +3,31 @@ package org.eddiecho.isolationleveldemo.service;
 import org.eddiecho.isolationleveldemo.IsolationLevelDemoApplication;
 import org.eddiecho.isolationleveldemo.repository.AccountRepository;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.TransactionSystemException;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(classes = IsolationLevelDemoApplication.class)
 @Testcontainers(disabledWithoutDocker = true)
-class AccountServiceTests {
-
-    /**
-     * MySQL Testcontainer with general query log enabled.
-     * Logs all incoming SQL queries for inspection.
-     * Reference: <a href="https://dev.mysql.com/doc/refman/8.4/en/query-log.html">MySQL General Query Log</a>
-     */
-    @Container
-    private static final MySQLContainer<?> mysql = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"))
-            .withCommand("--general-log", "--general-log-file=/var/lib/mysql/general.log");
+class ReadPhenomenaTest extends AbstractIntegrationTest{
 
     @Autowired
     private AccountService accountService;
     @Autowired
     private AccountRepository accountRepository;
 
-    @BeforeAll
-    static void startContainer() {
-        System.setProperty("spring.datasource.url", mysql.getJdbcUrl());
-        System.setProperty("spring.datasource.username", mysql.getUsername());
-        System.setProperty("spring.datasource.password", mysql.getPassword());
-    }
-
     @AfterEach
     void cleanUp() {
         accountRepository.deleteAll();
     }
-
-    private final BiConsumer<Number, Number> verifyReadValue = Assertions::assertEquals;
 
     /**
      * Dirty Reads with READ_UNCOMMITTED:
