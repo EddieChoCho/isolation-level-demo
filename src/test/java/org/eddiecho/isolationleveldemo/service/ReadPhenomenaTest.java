@@ -245,12 +245,12 @@ class ReadPhenomenaTest extends AbstractIntegrationTest{
     }
 
     /**
-     * MySQL prevent Phantom Reads with REPEATABLE_READ using gap locking:
+     * MySQL prevent Phantom Reads with REPEATABLE_READ:
      *   - First transaction select all the accounts which money > 0, the result count is 0.
      *   - Then second transaction update the value of the accountF to 100.
      *   - Then second transaction commit.
      *   - When first transaction select all the accounts which money > 0 again, the result count is still 0.
-     * See: <a href="https://dev.mysql.com/doc/refman/8.4/en/innodb-next-key-locking.html">MySQL: Phantom Rows</a>
+     * See: <a href="https://dev.mysql.com/doc/refman/8.4/en/innodb-transaction-isolation-levels.html">17.7.2.1 Transaction Isolation Levels</a>
      */
     @Test
     void testPreventPhantomReadWithRepeatableReadIsolation() throws InterruptedException {
